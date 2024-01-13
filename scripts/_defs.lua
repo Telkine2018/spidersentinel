@@ -1,0 +1,32 @@
+
+
+---@class Info
+---@field squad integer?
+---@field state integer
+---@field return_state integer
+---@field id_label integer
+---@field entity LuaEntity
+---@field attack_distance integer
+---@field radius integer
+---@field min_health integer
+---@field retreat_if_no_ammo boolean?
+---@field min_ammo integer
+---@field collect_loot boolean?
+---@field start_position MapPosition
+---@field target LuaEntity?
+---@field path_start MapPosition
+---@field path_end MapPosition
+---@field path_finder_handle integer?
+---@field path_middle boolean?
+---@field path PathfinderWaypoint[]?
+---@field path_endpoint MapPosition
+---@field stuck_count integer
+---@field collision_mask string[]
+---@field bounding_box BoundingBox
+---@field failed_map {[string]:boolean}
+---@field old_pos MapPosition
+
+---@class Duplicator 
+---@field entity LuaEntity
+---@field previous any
+---@field items {[string]:integer}

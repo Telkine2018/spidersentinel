@@ -1,0 +1,17 @@
+{
+    "Lua.diagnostics.globals": [
+        "create_spidertron",
+        "rendering",
+        "game",
+        "global",
+        "log",
+        "serpent",
+        "defines",
+        "script"
+    ],
+    "Lua.diagnostics.disable": [
+        "undefined-field",
+        "missing-fields"
+    ],
+    "Lua.workspace.checkThirdParty": false
+}

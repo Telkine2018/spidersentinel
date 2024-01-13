@@ -1,0 +1,58 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.0.1
+Date: 23. 12. 2023.
+  Changes:
+    - UPS Optimization
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 17. 03. 2022.
+  Changes:
+    - Setting a spider remote on a spidertron make it the leader of its squad
+    - Fix crash with squad with no label
+    - Fix path finding
+    - Packing/unpacking a squad keep the energy and the shield of equipment
+---------------------------------------------------------------------------------------------------
+Version: 0.0.7
+Date: 18. 12. 2021.
+  Bugfixes:
+    - Save fuel inventory
+    - Fix crash on savings item with data
+  Changes:
+    - Manages spidertron names
+    - Entering a spidetron make it the leader of the squad
+---------------------------------------------------------------------------------------------------
+Version: 0.0.6
+Date: 18. 12. 2021.
+  Bugfixes:
+    - Fix invalid pathfinding for fast spidertron
+    - Fix pipette crash
+  Info:
+    - Add automatic collecting of loot (for Bob's mod)
+    - Increase max range of attack to 1000 tiles
+    - Add packaging of a spidertron and its inventory into a tagged item to ease deployment
+    - Add squad management
+---------------------------------------------------------------------------------------------------
+Version: 0.0.5
+Date: 18. 06. 2021.
+  Bugfixes:
+    - Fix desync in multiplayer
+---------------------------------------------------------------------------------------------------
+Version: 0.0.4
+Date: 14. 05. 2021.
+  Info:
+    - Now use factorio path finder to move to a position
+---------------------------------------------------------------------------------------------------
+Version: 0.0.3
+Date: 06. 05. 2021.
+  Info:
+    - Add a button to toggle the spider sentinel panel
+---------------------------------------------------------------------------------------------------
+Version: 0.0.2
+Date: 03. 05. 2021.
+  Info:
+    - Add Tiny Spider, a lighter version of spidertron accessible with blue science
+---------------------------------------------------------------------------------------------------
+Version: 0.0.1
+Date: 04. 04. 2021.
+  Info:
+    - Initial release

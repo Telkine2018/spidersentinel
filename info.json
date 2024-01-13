@@ -1,0 +1,13 @@
+{
+  "name": "spidersentinel",
+  "version": "1.0.1",
+  "title": "Spider sentinel",
+  "author": "Telkine2018",
+  "contact": "",
+  "homepage": "",
+  "description": "Make spidertron a sentinel. It defends your base and automatically attacks any enemy in a wide range area.",
+  "factorio_version": "1.1",
+  "dependencies": [
+		"base >= 1.1"
+	]
+}
