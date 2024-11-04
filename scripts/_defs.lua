@@ -4,7 +4,7 @@
 ---@field squad integer?
 ---@field state integer
 ---@field return_state integer
----@field id_label integer
+---@field id_label LuaRenderObject
 ---@field entity LuaEntity
 ---@field attack_distance integer
 ---@field radius integer

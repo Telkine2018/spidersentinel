@@ -90,10 +90,10 @@ local vect_distance = function(p1, p2)
 end
 
 local function get_vars(player)
-    local players = global.players
+    local players = storage.players
     if not players then
         players = {}
-        global.players = players
+        storage.players = players
     end
     local vars = players[player.index]
     if not vars then
@@ -124,9 +124,9 @@ end
 
 ---@return integer
 local function get_id()
-    local id = global.id or 1
+    local id = storage.id or 1
     id = id + 1
-    global.id = id
+    storage.id = id
     return id
 end
 
@@ -211,17 +211,19 @@ local function set_tags(entity, tags)
 
     if tags.grid then
         local grid = entity.grid
-        for _, gridelement in pairs(tags.grid) do
-            local energy = gridelement.energy
-            local shield = gridelement.shield
-            gridelement.energy = nil
-            gridelement.shield = nil
-            local equip = grid.put(gridelement)
-            if energy and energy > 0 then
-                equip.energy = energy
-            end
-            if shield and shield > 0 then
-                equip.shield = shield
+        if grid then
+            for _, gridelement in pairs(tags.grid) do
+                local energy = gridelement.energy
+                local shield = gridelement.shield
+                gridelement.energy = nil
+                gridelement.shield = nil
+                local equip = grid.put(gridelement)
+                if energy and energy > 0 then
+                    equip.energy = energy
+                end
+                if shield and shield > 0 then
+                    equip.shield = shield
+                end
             end
         end
     end
@@ -331,7 +333,7 @@ local function on_built_entity(evt)
     elseif entity_name == duplicator_name then
         if not duplicators then
             duplicators = {}
-            global.duplicators = duplicators
+            storage.duplicators = duplicators
         end
         -- debug("Add duplicator")
         duplicators[entity.unit_number] = {
@@ -512,7 +514,11 @@ local function process_duplicator(duplicator)
         end
     end
 
-    for i = 1, chest.request_slot_count do chest.clear_request_slot(i) end
+    local lpoint = chest.get_logistic_point(defines.logistic_member_index.logistic_container)
+    ---@cast lpoint -nil
+    local section = lpoint.get_section(1) or lpoint.add_section("")
+
+    section.filters = {}
     if not tags then
         duplicator.previous = nil
         -- debug("No squad")
@@ -525,15 +531,16 @@ local function process_duplicator(duplicator)
     -- debug(string.gsub(serpent.block(items), "%s", ""))
 
     local index = 1
+    local filters = {}
     for name, count in pairs(items) do
         if index > 20 then break end
-        chest.set_request_slot({ name = name, count = count }, index)
+        table.insert(filters, { value = name, min = count })
         index = index + 1
     end
+    section.filters = filters
 
-    local contents = inv.get_contents()
     for rname, rcount in pairs(items) do
-        local count = contents[rname]
+        local count = inv.get_item_count(rname)
         if not count or rcount > count then
             -- debug("Missing: ".. rname)
             return
@@ -599,7 +606,7 @@ local function on_pre_player_mined_item(e)
         not tags.spider_trash then
         tags = nil
     end
-    global.current_tags = tags
+    storage.current_tags = tags
 end
 
 local function on_player_mined_entity(e)
@@ -608,7 +615,7 @@ local function on_player_mined_entity(e)
     local entity_name = entity.name
 
     if settings.global["spidersentinel-conservative-mining"].value then
-        local tags = global.current_tags
+        local tags = storage.current_tags
         if tags then
             e.buffer.clear()
             e.buffer.insert {
@@ -618,7 +625,7 @@ local function on_player_mined_entity(e)
 
             local stack = e.buffer[1]
             stack.tags = tags
-            global.current_tags = nil
+            storage.current_tags = nil
 
             local label = entity.entity_label
             if tags.squad_spiders then
@@ -652,7 +659,7 @@ local function on_selected_area(event)
         if spider.force_index == force_index then
             local info = get_info_spider(spider)
             if info.id_label then
-                rendering.destroy(info.id_label)
+                info.id_label.destroy()
                 info.id_label = nil
             end
             info.squad = squad
@@ -1356,7 +1363,7 @@ local function on_gui_opened(event)
     remove_radius_circle(player)
     if not spiders then
         spiders = {}
-        global.spiders = spiders
+        storage.spiders = spiders
     end
 
     close_player_gui(player)
@@ -1635,12 +1642,12 @@ local function on_gui_checked_state_changed(e)
     end
 end
 
----@param data NthTickEventData 
+---@param data NthTickEventData
 local function on_nth_tick(data)
     if spiders then
         for _, info in pairs(spiders) do process_spider(info) end
 
-        for player_index, vars in pairs(global.players) do
+        for player_index, vars in pairs(storage.players) do
             if vars.tags and vars.tags.info and vars.tags.info.state ==
                 state_stopped and vars.tags.position and
                 vect_distance(vars.tags.position, vars.tags.info.entity.position) >
@@ -1715,16 +1722,16 @@ script.on_event(defines.events.on_script_path_request_finished, on_script_path_r
 -- Init
 
 local function on_init()
-    global.spiders = {}
-    global.players = {}
+    storage.spiders = {}
+    storage.players = {}
     create_player_buttons()
 end
 
 script.on_init(on_init)
 
 local function on_load()
-    spiders = global.spiders
-    duplicators = global.duplicators
+    spiders = storage.spiders
+    duplicators = storage.duplicators
 end
 
 script.on_load(on_load)
@@ -1789,11 +1796,15 @@ remote.add_interface("spidersentinel", {
 
 ------------------------------------------------------
 
-local function on_player_configured_spider_remote(e)
-    local vehicle = e.vehicle
+---@param e EventData.on_player_used_spidertron_remote 
+local function on_player_used_spidertron_remote (e)
 
-    follow(vehicle.unit_number)
+    local player = game.players[e.player_index]
+    local selection = player.spidertron_remote_selection 
+    if not selection or #selection == 0 then return end
+
+    follow(selection[1].unit_number)
 end
 
-script.on_event(defines.events.on_player_configured_spider_remote,
-    on_player_configured_spider_remote)
+script.on_event(defines.events.on_player_used_spidertron_remote ,
+    on_player_used_spidertron_remote )

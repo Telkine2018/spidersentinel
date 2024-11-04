@@ -1,10 +1,9 @@
 
 local prefix = "spidersentinel"
 
-local entity = table.deepcopy(data.raw["logistic-container"]["logistic-chest-requester"])
 
 -- Item definition
-local item = table.deepcopy(data.raw["item"]["logistic-chest-requester"])
+local item = table.deepcopy(data.raw["item"]["requester-chest"])
 item.name = prefix .. "_duplicator"
 item.icon = "__" .. prefix .. "__/graphics/icons/duplicator.png"
 item.stack_size = 10
@@ -14,21 +13,20 @@ item.subgroup = "production-machine"
 item.order = "b[personal-transport]-x[" .. prefix .. "-duplicator]"
 
 -- Entity definition
-local entity = table.deepcopy(data.raw["logistic-container"]["logistic-chest-requester"])
+local entity = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
 entity.name = prefix .. "_duplicator"
 entity.icon = "__"..prefix.."__/graphics/icons/duplicator.png"
-entity.animation.layers[1].filename = "__"..prefix.."__/graphics/entity/duplicator/duplicator.png"
-entity.animation.layers[1].hr_version.filename = "__"..prefix.."__/graphics/entity/duplicator/hr-duplicator.png"
+entity.animation.layers[1].filename = "__"..prefix.."__/graphics/entity/duplicator/hr-duplicator.png"
 entity.minable = {
     mining_time = 0.1,
     result = prefix .. "_duplicator"
   }
 
 -- Recipe definition
-local recipe = table.deepcopy(data.raw["recipe"]["logistic-chest-requester"])
+local recipe = table.deepcopy(data.raw["recipe"]["requester-chest"])
 recipe.name = prefix .. "_duplicator"
 recipe.enabled = false
-recipe.result = prefix .."_duplicator"
+recipe.results = {{ type="item", name=prefix .."_duplicator", amount=1}}
 
 -- Add all
 data:extend { item, entity, recipe }
