@@ -21,7 +21,7 @@
 ---@field path PathfinderWaypoint[]?
 ---@field path_endpoint MapPosition
 ---@field stuck_count integer
----@field collision_mask string[]
+---@field collision_layers {[string]:boolean}
 ---@field bounding_box BoundingBox
 ---@field failed_map {[string]:boolean}
 ---@field old_pos MapPosition

@@ -29,6 +29,12 @@ local ntick_delay = 20
 
 local stuck_delta = 1
 
+--- scan for water at the start position
+local use_scan_water = true
+
+--- try to go to target position
+local use_direct_path = false
+
 --[[
 
 structure
@@ -746,7 +752,7 @@ get_info_spider = function(spider)
         state = state_stopped,
         attack_distance = range,
         radius = 300,
-        min_health = spider.prototype.max_health / 4,
+        min_health = spider.prototype.get_max_health() / 4,
         retreat_if_no_ammo = true,
         min_ammo = 300,
         collect_loot = false,
@@ -759,6 +765,24 @@ get_info_spider = function(spider)
 end
 
 local check_if_stuck
+
+---@param info Info
+---@return table
+local function get_request_path_parameters(info)
+    return {
+        bounding_box = info.bounding_box,
+        collision_mask = {
+            layers = info.collision_layers,
+            colliding_with_tiles_only = true,
+            not_colliding_with_itself= true
+        },
+        start = info.path_start,
+        goal = info.path_end,
+        force = info.entity.force,
+        radius = 10,
+        entity_to_ignore = info.entity
+    }
+end
 
 ---@param info Info
 ---@return LuaEntity?
@@ -814,55 +838,45 @@ end
 local function start_path_finding(info)
     info.path = nil
     local position = info.entity.position
-    local tiles = info.entity.surface.find_tiles_filtered {
-        position = position,
-        radius = 20
-    }
 
-    local found, found_dist, found_key
-    local failed_map = info.failed_map
-    for _, tile in pairs(tiles) do
-        if not tile.collides_with("player-layer") then
-            local key = tostring(tile.position.x) .. "/" .. tostring(tile.position.y)
-            if not failed_map[key] then
-                local d = vect_distance(tile.position --[[@as MapPosition]], position)
-                if not found or d < found_dist then
-                    found_dist = d
-                    found = tile
-                    found_key = key
+    if use_scan_water then
+        local tiles = info.entity.surface.find_tiles_filtered {
+            position = position,
+            radius = 10
+        }
+
+        local found, found_dist, found_key
+        local failed_map = info.failed_map
+        for _, tile in pairs(tiles) do
+            if not tile.collides_with("player") then
+                local key = tostring(tile.position.x) .. "/" .. tostring(tile.position.y)
+                if not failed_map[key] then
+                    local d = vect_distance(tile.position --[[@as MapPosition]], position)
+                    if not found or d < found_dist then
+                        found_dist = d
+                        found = tile
+                        found_key = key
+                    end
                 end
             end
         end
+
+        if not found then
+            -- debug("found = nil")
+            return false
+        end
+
+        -- debug("Search initial position: " .. found.name .. "," .. string.gsub(serpent.block(found.position), "%s", "") .. "," .. string.gsub(serpent.block(info.entity.position), "%s", ""))
+
+
+        failed_map[found_key] = true
+        info.path_start = found.position --[[@as MapPosition]]
+    else
+        info.path_start = position
     end
-
-    if not found then
-        -- debug("found = nil")
-        return false
-    end
-
-    -- debug("Search initial position: " .. found.name .. "," .. string.gsub(serpent.block(found.position), "%s", "") .. "," .. string.gsub(serpent.block(info.entity.position), "%s", ""))
-
-
-    failed_map[found_key] = true
-    info.path_start = found.position --[[@as MapPosition]]
-    info.path_finder_handle = info.entity.surface.request_path {
-        bounding_box = info.bounding_box,
-        collision_mask = info.collision_mask,
-        start = found.position --[[@as MapPosition]],
-        goal = info.path_end,
-        force = info.entity.force,
-        pathfind_flags = {
-            no_break = true,
-            allow_paths_through_own_entities = true,
-            cache = false,
-            prefer_straight_paths = true
-        },
-        entity_to_ignore = info.entity,
-        can_open_gates = true,
-        low_priority = true
-
-    }
-
+    local parameters = get_request_path_parameters(info)
+    log("parameters:" .. serpent.block(parameters, { compact=true}))
+    info.path_finder_handle = info.entity.surface.request_path(parameters)
     return true
 end
 
@@ -878,7 +892,7 @@ check_if_stuck = function(info, target_position)
 
         if info.stuck_count > 6 then
             info.path = nil
-            info.collision_mask = { "water-tile" }
+            info.collision_layers = { doodad = true }
             info.bounding_box = { { -0.01, -0.01 }, { 0.01, 0.01 } }
             info.failed_map = {}
             info.path_middle = nil
@@ -893,10 +907,8 @@ check_if_stuck = function(info, target_position)
             info.stuck_count = 0
             return true
         end
-    else
-        info.stuck_count = 0
-        info.old_pos = position
     end
+    info.old_pos = position
     return false
 end
 
@@ -920,30 +932,19 @@ local function on_script_path_request_finished(e)
                         y = start.y + d * n.y
                     }
                     info.path_end = new_end
-                    info.path_finder_handle =
-                        info.entity.surface.request_path {
-                            bounding_box = info.bounding_box,
-                            collision_mask = info.collision_mask,
-                            start = info.path_start,
-                            goal = info.path_end,
-                            force = info.entity.force,
-                            pathfind_flags = {
-                                prefer_straight_paths = true,
-                                no_break = true
-                            },
-                            entity_to_ignore = info.entity,
-                            can_open_gates = true,
-                            low_priority = true
-                        }
+                    local parameters = get_request_path_parameters(info)
+                    log("parameters:" .. serpent.block(parameters, { compact=true}))
+                    info.path_finder_handle = info.entity.surface.request_path(parameters)
                     info.path_middle = true
                 else
-                    if not start_path_finding(info) then
+                    --if not start_path_finding(info) then
                         info.state = info.return_state
-                    end
+                    --end
                 end
             else
                 info.path = e.path
             end
+            return
         end
     end
 end
@@ -959,7 +960,9 @@ local function goto_target(info)
         x = target_position.x - attack_distance * n.x,
         y = target_position.y - attack_distance * n.y
     }
-    info.entity.autopilot_destination = dest
+    if use_direct_path then
+        info.entity.autopilot_destination = dest
+    end
     info.state = state_goto_position
 
     if check_if_stuck(info, target_position) then
@@ -1109,7 +1112,9 @@ local function process_spider(info)
         end
     elseif state == state_goto_base then
         if not check_ennemy(info) then
-            info.entity.autopilot_destination = info.start_position
+            if use_direct_path then
+                info.entity.autopilot_destination = info.start_position
+            end
             if check_if_stuck(info, info.start_position) then
                 info.return_state = state_goto_base
             end
@@ -1123,7 +1128,7 @@ local function process_spider(info)
                     local contents = inv.get_contents()
                     local count = 0
                     for _, c in pairs(contents) do
-                        count = count + c
+                        count = count + c.count
                     end
                     if count >= info.min_ammo then
                         info.state = state_scanning
@@ -1338,7 +1343,7 @@ local function add_title(frame)
         type = "sprite-button",
         name = pfx .. "_close_button",
         style = "frame_action_button",
-        sprite = "utility/close_white",
+        sprite = "utility/close",
         mouse_button_filter = { "left" }
     }
 end
@@ -1796,15 +1801,14 @@ remote.add_interface("spidersentinel", {
 
 ------------------------------------------------------
 
----@param e EventData.on_player_used_spidertron_remote 
-local function on_player_used_spidertron_remote (e)
-
+---@param e EventData.on_player_used_spidertron_remote
+local function on_player_used_spidertron_remote(e)
     local player = game.players[e.player_index]
-    local selection = player.spidertron_remote_selection 
+    local selection = player.spidertron_remote_selection
     if not selection or #selection == 0 then return end
 
     follow(selection[1].unit_number)
 end
 
-script.on_event(defines.events.on_player_used_spidertron_remote ,
-    on_player_used_spidertron_remote )
+script.on_event(defines.events.on_player_used_spidertron_remote,
+    on_player_used_spidertron_remote)
