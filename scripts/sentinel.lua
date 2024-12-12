@@ -176,7 +176,7 @@ local function display_squad_id(squad)
             local entity = info.entity
             if entity.valid then
                 if info.id_label then
-                    rendering.destroy(info.id_label)
+                    info.id_label.destroy()
                 end
                 info.id_label = rendering.draw_text {
                     target_offset = { 0, 0 },
@@ -200,7 +200,12 @@ local function set_tags(entity, tags)
         for _, stack_info in pairs(def) do
             local type = stack_info.type
             if type == "item" then
-                inv.insert { name = stack_info.name, count = stack_info.count }
+                inv.insert {
+                    name = stack_info.name,
+                    count = stack_info.count,
+                    quality = stack_info.quality,
+                    spoil_percent = stack_info.spoil_percent
+                }
             elseif type == "export" then
                 local empty = inv.find_empty_stack()
                 if empty then
@@ -235,12 +240,13 @@ local function set_tags(entity, tags)
     end
 
     if tags.logistics then
-        for _, slot in pairs(tags.logistics) do
-            entity.set_vehicle_logistic_slot(slot.index, {
-                name = slot.name,
-                min = slot.min,
-                max = slot.max
-            })
+        for _, lpoint in pairs(tags.logistics) do
+            local point = entity.get_logistic_point(lpoint.index)
+            for _, lsection in pairs(lpoint.sections) do
+                ---@cast point -nil
+                local section = point.add_section(lsection.group)
+                section.filters = lsection.filters
+            end
         end
     end
 
@@ -304,9 +310,7 @@ local function on_built_entity(evt)
     local entity_name = entity.name
 
     if entity.type == "spider-vehicle" then
-        local player = game.players[evt.player_index]
-        local tags = evt.stack and evt.stack.is_item_with_tags and
-            evt.stack.tags
+        local tags = evt.tags or (evt.stack and evt.stack.is_item_with_tags and evt.stack.tags)
         if tags and tags.spidersentinel then
             set_tags(entity, tags)
 
@@ -327,7 +331,7 @@ local function on_built_entity(evt)
                     set_tags(entity2, def)
                 end
 
-                local label = evt.stack.label
+                local label = tags.label
                 if label and not string.find(label, "^Squad%(") then
                     entity.entity_label = label
                 end
@@ -379,6 +383,8 @@ local function get_tags(entity)
     local spider_trash = entity.get_inventory(defines.inventory.spider_trash)
     local fuel = entity.get_inventory(defines.inventory.fuel)
 
+    ---@param inv LuaInventory
+    ---@return table?
     local function serialize_inventory(inv)
         if not inv then return {} end
 
@@ -395,7 +401,9 @@ local function get_tags(entity)
                     table.insert(result, {
                         type = "item",
                         name = stack.name,
-                        count = stack.count
+                        count = stack.count,
+                        quality = stack.quality.name,
+                        spoil_percent = stack.spoil_percent
                     })
                 end
             end
@@ -414,17 +422,31 @@ local function get_tags(entity)
     end
 
     local logistics = {}
-    for i = 1, 100 do
-        local slot = entity.get_vehicle_logistic_slot(i)
-        if slot.name then
-            table.insert(logistics, {
-                index = i,
-                name = slot.name,
-                min = slot.min,
-                max = slot.max
-            })
+
+    local points = entity.get_logistic_point()
+    local lpoints = {}
+    for point_index, point in pairs(points) do
+        local lpoint = nil
+        for _, section in pairs(point.sections) do
+            if section.is_manual then
+                local lsection = {}
+                local filters = section.filters
+                if filters and #filters > 0 then
+                    if not lpoint then
+                        lpoint = {}
+                        lpoint.index = point.logistic_member_index
+                        lpoint.sections = {}
+                        table.insert(lpoints, lpoint)
+                    end
+                    lsection = {}
+                    table.insert(lpoint.sections, lsection)
+                    lsection.group = section.group
+                    lsection.filters = filters
+                end
+            end
         end
     end
+    logistics = lpoints
 
     local tags = {
         name = entity_name,
@@ -593,8 +615,7 @@ local function on_pre_player_mined_item(e)
             if info2 ~= info and info2.squad == squad and
                 vect_distance(position, info2.entity.position) < 300 then
                 local tags2 = get_tags(info2.entity)
-                tags2.squad_position =
-                    vect_diff(position, info2.entity.position)
+                tags2.squad_position = vect_diff(position, info2.entity.position)
                 table.insert(to_remove, info2.entity.unit_number)
                 info2.entity.destroy()
                 table.insert(squad_spiders, tags2)
@@ -615,6 +636,7 @@ local function on_pre_player_mined_item(e)
     storage.current_tags = tags
 end
 
+---@param e EventData.on_player_mined_entity
 local function on_player_mined_entity(e)
     local entity = e.entity
     local surface = entity.surface
@@ -625,24 +647,26 @@ local function on_player_mined_entity(e)
         if tags then
             e.buffer.clear()
             e.buffer.insert {
-                name = "spidersentinel-" .. entity_name .. "-item",
+                name = "spidersentinel-" .. entity.name .. "-item",
                 count = 1
             }
 
             local stack = e.buffer[1]
-            stack.tags = tags
-            storage.current_tags = nil
 
             local label = entity.entity_label
             if tags.squad_spiders then
                 if (not label) then
-                    label = "Squad(" .. (#tags.squad_spiders + 1) ..
-                        " spidertrons)"
+                    label = "Squad(" .. (#tags.squad_spiders + 1) .. " spidertrons)"
                 end
                 stack.label = label
             elseif label then
                 stack.label = label
             end
+
+            tags.label = label
+            stack.tags = tags
+            storage.current_tags = nil
+
             -- debug(string.gsub("TAGS:" .. serpent.block(tags), "%s", ""))
         end
     end
@@ -731,7 +755,7 @@ local function on_player_alt_selected_area(event)
             info.squad = nil
             spider.follow_target = nil
             if info.id_label then
-                rendering.destroy(info.id_label)
+                info.id_label.destroy()
                 info.id_label = nil
             end
         end
@@ -774,7 +798,7 @@ local function get_request_path_parameters(info)
         collision_mask = {
             layers = info.collision_layers,
             colliding_with_tiles_only = true,
-            not_colliding_with_itself= true
+            not_colliding_with_itself = true
         },
         start = info.path_start,
         goal = info.path_end,
@@ -875,7 +899,6 @@ local function start_path_finding(info)
         info.path_start = position
     end
     local parameters = get_request_path_parameters(info)
-    log("parameters:" .. serpent.block(parameters, { compact=true}))
     info.path_finder_handle = info.entity.surface.request_path(parameters)
     return true
 end
@@ -933,12 +956,11 @@ local function on_script_path_request_finished(e)
                     }
                     info.path_end = new_end
                     local parameters = get_request_path_parameters(info)
-                    log("parameters:" .. serpent.block(parameters, { compact=true}))
                     info.path_finder_handle = info.entity.surface.request_path(parameters)
                     info.path_middle = true
                 else
                     --if not start_path_finding(info) then
-                        info.state = info.return_state
+                    info.state = info.return_state
                     --end
                 end
             else
