@@ -359,7 +359,7 @@ local function on_built_entity(evt)
     end
 end
 
----@param e LuaEntity
+---@param e EventData.on_player_mined_entity
 local function on_remove_entity(e)
     local entity = e.entity
 
