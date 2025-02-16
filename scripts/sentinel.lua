@@ -109,6 +109,16 @@ local function get_vars(player)
     return vars
 end
 
+---@param id any
+local function destroy_render_object(id)
+    if not id then return end
+    if type(id) == "number" then
+        rendering.get_object_by_id(id).destroy()
+    else
+        id.destroy()
+    end
+end
+
 local tracing = true
 local debug_index = 1
 
@@ -119,21 +129,6 @@ local function debug(msg)
     debug_index = debug_index + 1
     game.print(msg)
     log(msg)
-end
-
----@param str string
----@param ending string
----@return boolean
-local function ends_with(str, ending)
-    return ending == "" or str:sub(- #ending) == ending
-end
-
----@return integer
-local function get_id()
-    local id = storage.id or 1
-    id = id + 1
-    storage.id = id
-    return id
 end
 
 local on_gui_closed
@@ -170,14 +165,21 @@ local function apply_squad(info, f)
 end
 
 ---@param squad integer
+---@return Info?
+local function get_squad_leader(squad)
+    for _, info in pairs(spiders) do
+        if info.squad == squad and info.state ~= state_stopped then return info end
+    end
+    return nil
+end
+
+---@param squad integer
 local function display_squad_id(squad)
     for _, info in pairs(spiders) do
         if info.squad == squad then
             local entity = info.entity
             if entity.valid then
-                if info.id_label then
-                    info.id_label.destroy()
-                end
+                destroy_render_object(info.id_label)
                 info.id_label = rendering.draw_text {
                     target_offset = { 0, 0 },
                     text = tostring(squad),
@@ -254,6 +256,8 @@ local function set_tags(entity, tags)
     entity.health = tags.health
 
     local info = get_info_spider(entity)
+    if not info then return end
+
     if tags.radius then
         info.radius = tags.radius
         info.min_health = tags.min_health
@@ -315,6 +319,7 @@ local function on_built_entity(evt)
             set_tags(entity, tags)
 
             local info = get_info_spider(entity)
+            if not info then return end
             if tags.squad_spiders then
                 local squad = allocate_squad_id()
                 info.squad = squad
@@ -688,20 +693,22 @@ local function on_selected_area(event)
     for _, spider in pairs(entities) do
         if spider.force_index == force_index then
             local info = get_info_spider(spider)
-            if info.id_label then
-                info.id_label.destroy()
-                info.id_label = nil
-            end
-            info.squad = squad
-            local d
-            if not nearest then
-                nearest = info.entity
-                nearest_d = vect_distance(nearest.position, player.position)
-            else
-                d = vect_distance(info.entity.position, player.position)
-                if d < nearest_d then
+            if info then
+                if info.id_label then
+                    destroy_render_object(info.id)
+                    info.id_label = nil
+                end
+                info.squad = squad
+                local d
+                if not nearest then
                     nearest = info.entity
-                    nearest_d = d
+                    nearest_d = vect_distance(nearest.position, player.position)
+                else
+                    d = vect_distance(info.entity.position, player.position)
+                    if d < nearest_d then
+                        nearest = info.entity
+                        nearest_d = d
+                    end
                 end
             end
         end
@@ -752,10 +759,11 @@ local function on_player_alt_selected_area(event)
     for _, spider in pairs(entities) do
         if spider.force_index == force_index then
             local info = get_info_spider(spider)
+            if not info then return end
             info.squad = nil
             spider.follow_target = nil
             if info.id_label then
-                info.id_label.destroy()
+                destroy_render_object(info.id_label)
                 info.id_label = nil
             end
         end
@@ -763,12 +771,16 @@ local function on_player_alt_selected_area(event)
 end
 
 ---@param spider LuaEntity
----@return Info
+---@return Info?
 get_info_spider = function(spider)
     local info = spiders[spider.unit_number]
     if info then return info end
 
+    if not spider.prototype.guns then return nil end
+
     local _, gun = next(spider.prototype.guns)
+    if not gun then return nil end
+
     local range = math.ceil(gun.attack_parameters.range * 0.6)
 
     info = {
@@ -1081,6 +1093,40 @@ local function check_retreat(info)
     return false
 end
 
+
+---@param info Info
+local function check_end_of_retreat(info)
+
+    if info.entity.get_health_ratio() >= 1 then
+        local inv = info.entity.get_inventory(defines.inventory.spider_ammo)
+        ---@cast inv -nil
+        if info.min_ammo > 0 then
+            local contents = inv.get_contents()
+            local count = 0
+            local ammo_name
+            for _, c in pairs(contents) do
+                count = count + c.count
+                if not ammo_name then
+                    ammo_name = c.name
+                end
+            end
+            if ammo_name then
+                local main_inv = info.entity.get_inventory(defines.inventory.spider_trunk)
+                if main_inv then
+                    local ammo_count = main_inv.get_item_count(ammo_name)
+                    count = count + ammo_count
+                end
+            end
+            if count >= info.min_ammo then
+                return true
+            end
+        else
+            return true
+        end
+    end
+    return false
+end
+
 ---@param info Info
 local function process_spider(info)
     if not info.entity.valid then return end
@@ -1104,7 +1150,15 @@ local function process_spider(info)
     local state = info.state
     -- debug("process: state=" .. state_names[state+1] .. ",position=(" .. info.entity.position.x .. "," .. info.entity.position.y ..")")
 
-    if state == state_stopped then return end
+    if state == state_stopped then
+        if info.squad and check_retreat(info) then
+            local leader = get_squad_leader(info.squad)
+            if leader then
+                leader.state = state_retreat
+            end
+        end
+        return
+    end
     if state == state_start then
         check_ennemy(info)
     elseif state == state_scanning then
@@ -1143,21 +1197,17 @@ local function process_spider(info)
         end
     elseif state == state_retreat then
         if vect_distance(info.entity.position, info.start_position) < 2 then
-            if info.entity.get_health_ratio() >= 1 then
-                local inv = info.entity.get_inventory(defines.inventory.spider_ammo)
-                ---@cast inv -nil
-                if info.min_ammo > 0 then
-                    local contents = inv.get_contents()
-                    local count = 0
-                    for _, c in pairs(contents) do
-                        count = count + c.count
-                    end
-                    if count >= info.min_ammo then
-                        info.state = state_scanning
-                    end
-                else
+            if not info.squad then
+                if check_end_of_retreat(info) then
                     info.state = state_scanning
                 end
+            else
+                for _, info1 in pairs(spiders) do
+                    if info.squad == info1.squad and not check_end_of_retreat(info1) then
+                        return
+                    end
+                end
+                info.state = state_scanning
             end
         else
             if check_if_stuck(info, info.start_position) then
@@ -1271,7 +1321,7 @@ remove_radius_circle = function(player)
     get_vars(player).tags = nil
 
     local radius_id = tags.radius_id
-    if radius_id then rendering.destroy(radius_id) end
+    if radius_id then destroy_render_object(radius_id) end
 
     if tags.force and tags.surface then
         local force = game.forces[tags.force]
@@ -1395,8 +1445,10 @@ local function on_gui_opened(event)
 
     close_player_gui(player)
 
-    get_vars(player).selected = entity
     local info = get_info_spider(entity)
+    if not info then return end
+
+    get_vars(player).selected = entity
     local enabled = not is_squad_started(info)
 
     local panel = player.gui.left.add {
@@ -1573,6 +1625,7 @@ local function on_gui_click(e)
         if not spider or not spider.valid then return end
 
         local info = get_info_spider(spider)
+        if not info then return end
         local stopped = not is_squad_started(info)
 
         if stopped then
@@ -1599,6 +1652,7 @@ local function on_gui_click(e)
         local spider = get_vars(player).selected
         if not spider or not spider.valid then return end
         local info = get_info_spider(spider)
+        if not info then return end
 
         if not info.squad then
             info.state = state_retreat
@@ -1638,6 +1692,7 @@ local function on_gui_text_changed(e)
     }) do
         if element_name == pfx .. "_" .. field_name then
             local info = get_info_spider(selected)
+            if not info then return end
             local value = tonumber(e.text)
             if value then info[field_name] = value end
 
@@ -1660,10 +1715,12 @@ local function on_gui_checked_state_changed(e)
     if not selected or not selected.valid then return end
     if e.element.name == pfx .. "_retreat_if_no_ammo" then
         local info = get_info_spider(selected)
+        if not info then return end
 
         info.retreat_if_no_ammo = e.element.state
     elseif e.element.name == pfx .. "_collect_loot" then
         local info = get_info_spider(selected)
+        if not info then return end
 
         info.collect_loot = e.element.state
     end
