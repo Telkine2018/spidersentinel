@@ -202,12 +202,14 @@ local function set_tags(entity, tags)
         for _, stack_info in pairs(def) do
             local type = stack_info.type
             if type == "item" then
-                inv.insert {
-                    name = stack_info.name,
-                    count = stack_info.count,
-                    quality = stack_info.quality,
-                    spoil_percent = stack_info.spoil_percent
-                }
+                if prototypes.item[stack_info.name] then
+                    inv.insert {
+                        name = stack_info.name,
+                        count = stack_info.count,
+                        quality = stack_info.quality,
+                        spoil_percent = stack_info.spoil_percent
+                    }
+                end
             elseif type == "export" then
                 local empty = inv.find_empty_stack()
                 if empty then
@@ -226,16 +228,18 @@ local function set_tags(entity, tags)
         local grid = entity.grid
         if grid then
             for _, gridelement in pairs(tags.grid) do
-                local energy = gridelement.energy
-                local shield = gridelement.shield
-                gridelement.energy = nil
-                gridelement.shield = nil
-                local equip = grid.put(gridelement)
-                if energy and energy > 0 then
-                    equip.energy = energy
-                end
-                if shield and shield > 0 then
-                    equip.shield = shield
+                if prototypes.item[gridelement.name] then
+                    local energy = gridelement.energy
+                    local shield = gridelement.shield
+                    gridelement.energy = nil
+                    gridelement.shield = nil
+                    local equip = grid.put(gridelement)
+                    if energy and energy > 0 then
+                        equip.energy = energy
+                    end
+                    if shield and shield > 0 then
+                        equip.shield = shield
+                    end
                 end
             end
         end
@@ -244,10 +248,12 @@ local function set_tags(entity, tags)
     if tags.logistics then
         for _, lpoint in pairs(tags.logistics) do
             local point = entity.get_logistic_point(lpoint.index)
-            for _, lsection in pairs(lpoint.sections) do
-                ---@cast point -nil
-                local section = point.add_section(lsection.group)
-                section.filters = lsection.filters
+            if lpoint.sections then
+                for _, lsection in pairs(lpoint.sections) do
+                    ---@cast point -nil
+                    local section = point.add_section(lsection.group)
+                    section.filters = lsection.filters
+                end
             end
         end
     end
@@ -1096,7 +1102,6 @@ end
 
 ---@param info Info
 local function check_end_of_retreat(info)
-
     if info.entity.get_health_ratio() >= 1 then
         local inv = info.entity.get_inventory(defines.inventory.spider_ammo)
         ---@cast inv -nil
